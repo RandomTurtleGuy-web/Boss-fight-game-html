@@ -73,14 +73,12 @@
       z-index: 1;
     }
 
-    /* HTML/CSS Overlay Menus */
     .overlay {
       position: absolute;
       inset: 8px;
-      z-index: 10;
+      z-index: 20;
       border-radius: 18px;
-      background: rgba(20, 17, 26, 0.9);
-      backdrop-filter: blur(4px);
+      background: rgba(20, 17, 26, 0.92);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -88,12 +86,10 @@
       padding: 24px;
       text-align: center;
       gap: 18px;
-      transition: opacity 0.25s ease;
     }
 
     .overlay.hidden {
-      opacity: 0;
-      pointer-events: none;
+      display: none !important;
     }
 
     .overlay h2 {
@@ -122,6 +118,8 @@
       border-radius: 14px;
       padding: 14px 10px;
       cursor: pointer;
+      font-family: inherit;
+      color: inherit;
       transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
       display: flex;
       flex-direction: column;
@@ -143,21 +141,18 @@
 
     .class-icon {
       font-size: 1.8rem;
-      pointer-events: none;
     }
 
     .class-name {
       font-weight: 700;
       font-size: 1rem;
       color: #ffffff;
-      pointer-events: none;
     }
 
     .class-desc {
       font-size: 0.78rem;
       color: #b4adc2;
       line-height: 1.25;
-      pointer-events: none;
     }
 
     .btn-primary {
@@ -244,31 +239,31 @@
         <p>Outlast all 3 kitchen bosses without getting popped. Deflecting bullets shaves time off the boss timer!</p>
         
         <div class="class-grid">
-          <button type="button" class="class-card selected" data-class="shielder">
+          <button type="button" id="card-shielder" class="class-card selected" onclick="selectClass('shielder')">
             <div class="class-icon">🛡️</div>
             <div class="class-name">Shielder</div>
             <div class="class-desc">Creates a bubble that deflects bullets back at bosses.</div>
           </button>
-          <button type="button" class="class-card" data-class="dasher">
+          <button type="button" id="card-dasher" class="class-card" onclick="selectClass('dasher')">
             <div class="class-icon">⚡</div>
             <div class="class-name">Dasher</div>
             <div class="class-desc">Quick invulnerable burst of speed to slip through tight gaps.</div>
           </button>
-          <button type="button" class="class-card" data-class="healer">
+          <button type="button" id="card-healer" class="class-card" onclick="selectClass('healer')">
             <div class="class-icon">💖</div>
             <div class="class-name">Healer</div>
             <div class="class-desc">Starts with 3 hearts and can regenerate a lost heart.</div>
           </button>
         </div>
 
-        <button type="button" id="startBtn" class="btn-primary">ENTER THE SKILLET</button>
+        <button type="button" id="startBtn" class="btn-primary" onclick="startGame()">ENTER THE SKILLET</button>
       </div>
 
       <!-- End Game Overlay -->
       <div id="endOverlay" class="overlay hidden">
         <h2 id="endTitle">YOU GOT POPPED!</h2>
         <p id="endSubtitle">Better luck next batch.</p>
-        <button type="button" id="restartBtn" class="btn-primary">PLAY AGAIN [R]</button>
+        <button type="button" id="restartBtn" class="btn-primary" onclick="startGame()">PLAY AGAIN [R]</button>
       </div>
     </div>
 
@@ -291,19 +286,16 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
-    const startOverlay = document.getElementById('startOverlay');
-    const endOverlay = document.getElementById('endOverlay');
-    const endTitle = document.getElementById('endTitle');
-    const endSubtitle = document.getElementById('endSubtitle');
-    const startBtn = document.getElementById('startBtn');
-    const restartBtn = document.getElementById('restartBtn');
-    const classCards = document.querySelectorAll('.class-card');
-
     const ARENA = { x: 340, y: 355, radius: 280 };
 
-    // Lazy-initialize Web Audio safely after user interaction
     let audioCtx = null;
     let isMuted = false;
+    let selectedClass = 'shielder';
+    let gameState = 'MENU';
+    let stageIndex = 0;
+    let projectiles = [];
+    let particles = [];
+    let screenShake = 0;
 
     function getAudioContext() {
       if (!audioCtx) {
@@ -352,15 +344,15 @@
           osc.frequency.exponentialRampToValueAtTime(640, now + 0.15);
           gain.gain.setValueAtTime(0.15, now);
           gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-          osc.start(now);osc.stop(now + 0.15);
-} else if (type === 'hit') {
-osc.type = 'sawtooth';
-osc.frequency.setValueAtTime(180, now);
-osc.frequency.exponentialRampToValueAtTime(55, now + 0.25);
-gain.gain.setValueAtTime(0.25, now);
-gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
-osc.start(now);
-osc.stop(now + 0.25);
+          osc.start(now);
+          osc.stop(now + 0.15);
+        } else if (type === 'hit') {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(180, now);
+          osc.frequency.exponentialRampToValueAtTime(55, now + 0.25);
+          gain.gain.setValueAtTime(0.25, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+          osc.start(now);osc.stop(now + 0.25);
 } else if (type === 'pop') {
 osc.type = 'square';
 osc.frequency.setValueAtTime(260, now);
@@ -379,21 +371,15 @@ gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
 osc.start(now);
 osc.stop(now + 0.4);
 }
-} catch (err) {
-// Ignore audio errors if blocked by browser policy
+} catch (err) {}
 }
-}
-// Class Selection UI
-let selectedClass = 'shielder';
-classCards.forEach(card => {
-card.addEventListener('click', () => {
-classCards.forEach(c => c.classList.remove('selected'));
-card.classList.add('selected');
-selectedClass = card.getAttribute('data-class');
+function selectClass(cls) {
+selectedClass = cls;
+document.querySelectorAll('.class-card').forEach(c => c.classList.remove('selected'));
+const activeCard = document.getElementById('card-' + cls);
+if (activeCard) activeCard.classList.add('selected');
 playSound('select');
-});
-});
-// Input Handling
+}
 const keys = {};
 window.addEventListener('keydown', e => {
 keys[e.code] = true;
@@ -409,13 +395,6 @@ isMuted = !isMuted;
 }
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
-startBtn.addEventListener('click', startGame);
-restartBtn.addEventListener('click', startGame);
-let gameState = 'MENU'; // MENU, PLAYING, GAMEOVER, VICTORY
-let stageIndex = 0;
-let projectiles = [];
-let particles = [];
-let screenShake = 0;
 const BOSSES = [
 { name: "STAGE 1: THE BUTTER STICK", color: "#ffe066", duration: 15, type: "butter" },
 { name: "STAGE 2: THE SALT SHAKER", color: "#f8f9fa", duration: 18, type: "salt" },
@@ -487,7 +466,6 @@ this.y += this.lastDirY * speed;
 this.x += this.lastDirX * 11.5;
 this.y += this.lastDirY * 11.5;
 }
-// Arena boundary clamp
 const distFromCenter = Math.hypot(this.x - ARENA.x, this.y - ARENA.y);
 if (distFromCenter > ARENA.radius - this.radius) {
 const angle = Math.atan2(this.y - ARENA.y, this.x - ARENA.x);
@@ -555,7 +533,7 @@ const boss = {
 x: 340,
 y: 190,
 radius: 36,
-timer: 0,
+timer: 15,
 attackCooldown: 0,
 angle: 0,
 laserAngle: 0,
@@ -570,6 +548,7 @@ projectiles = [];
 },
 update(dt) {
 const currentStage = BOSSES[stageIndex];
+if (!currentStage) return;
 this.timer -= dt;
 this.attackCooldown -= dt;
 this.angle += dt * 1.5;
@@ -755,7 +734,6 @@ ctx.fillStyle = "#3a3345";
 ctx.fillRect(340 - barWidth / 2, 42, barWidth, 12);
 ctx.fillStyle = currentStage.color;
 ctx.fillRect(340 - barWidth / 2, 42, barWidth * pct, 12);
-// Hearts
 ctx.textAlign = "left";
 ctx.font = "20px sans-serif";
 let heartStr = "";
@@ -763,7 +741,6 @@ for (let i = 0; i < player.maxHearts; i++) {
 heartStr += i < player.hearts ? "❤️ " : "🖤 ";
 }
 ctx.fillText(heartStr, 22, 38);
-// Ability Status
 ctx.textAlign = "right";
 ctx.font = "bold 14px 'Fredoka', sans-serif";
 const label = selectedClass.toUpperCase();
@@ -780,11 +757,14 @@ ctx.fillText(${label} READY [SPACE], 658, 36);
 }
 function setEndScreen(victory) {
 gameState = victory ? 'VICTORY' : 'GAMEOVER';
+const endTitle = document.getElementById('endTitle');
+const endSubtitle = document.getElementById('endSubtitle');
+const endOverlay = document.getElementById('endOverlay');
 endTitle.textContent = victory ? "UNPOPPED CHAMPION!" : "YOU GOT POPPED!";
 endTitle.style.color = victory ? "#ffd166" : "#ff595e";
 endSubtitle.textContent = victory
 ? You survived all 3 bosses as the ${selectedClass.toUpperCase()}!
-: Defeated on ${BOSSES[stageIndex].name}.;
+: Defeated on ${BOSSES[Math.min(stageIndex, BOSSES.length - 1)].name}.;
 endOverlay.classList.remove('hidden');
 }
 function startGame() {
@@ -793,8 +773,8 @@ stageIndex = 0;
 particles = [];
 player.reset();
 boss.init(BOSSES[0]);
-startOverlay.classList.add('hidden');
-endOverlay.classList.add('hidden');
+document.getElementById('startOverlay').classList.add('hidden');
+document.getElementById('endOverlay').classList.add('hidden');
 gameState = 'PLAYING';
 }
 let lastTime = performance.now();
@@ -820,7 +800,6 @@ screenShake *= 0.85;
 if (screenShake < 0.5) screenShake = 0;
 }
 ctx.clearRect(0, 0, canvas.width, canvas.height);
-// Skillet Arena
 ctx.fillStyle = "#352f40";
 ctx.beginPath();
 ctx.arc(ARENA.x, ARENA.y, ARENA.radius, 0, Math.PI * 2);
